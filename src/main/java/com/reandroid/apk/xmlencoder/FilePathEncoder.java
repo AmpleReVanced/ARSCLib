@@ -87,9 +87,9 @@ public class FilePathEncoder {
 
         PackageBlock packageBlock = getCurrentPackage();
         ResourceEntry resourceEntry = packageBlock.getTableBlock()
-                .getLocalResource(packageBlock, type, name);
+                .getOrCreateLocalResource(packageBlock, type, name);
         if(resourceEntry == null){
-            throw new XmlEncodeException("Local resource not defined: @" + type + "/" + name
+            throw new XmlEncodeException("Failed to create resource: @" + type + "/" + name
                     + ", for path: " + path);
         }
         Entry entry = resourceEntry.getOrCreate(qualifiers);

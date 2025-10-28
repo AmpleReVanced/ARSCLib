@@ -229,6 +229,22 @@ public class TableBlock extends Chunk<TableHeader>
         }
         return null;
     }
+    public ResourceEntry getOrCreateLocalResource(PackageBlock context, String type, String name){
+        ResourceEntry resourceEntry = getLocalResource(context, type, name);
+        if(resourceEntry != null){
+            return resourceEntry;
+        }
+        // Auto-create the resource entry if it doesn't exist
+        Iterator<PackageBlock> iterator = getPackages(context);
+        if(iterator.hasNext()){
+            PackageBlock packageBlock = iterator.next();
+            Entry entry = packageBlock.getOrCreate("", type, name);
+            if(entry != null){
+                return new ResourceEntry(packageBlock, entry.getResourceId());
+            }
+        }
+        return null;
+    }
     public Iterator<ResourceEntry> getLocalResources(String type){
         return new IterableIterator<PackageBlock, ResourceEntry>(getPackages((String) null)) {
             @Override

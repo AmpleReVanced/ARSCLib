@@ -283,10 +283,10 @@ public class XmlCoder {
             IOUtil.close(parser);
         }
         public void encodeEntry(XMLElement entryElement, TypeBlock typeBlock) throws IOException{
-            Entry entry = typeBlock.getOrCreateDefinedEntry(
-                    entryElement.getAttributeValue(ATTR_name));
+            String entryName = entryElement.getAttributeValue(ATTR_name);
+            Entry entry = typeBlock.getOrCreateEntry(entryName);
             if(entry == null){
-                throw new XmlEncodeException("Undefined entry name: " + entryElement.getDebugText());
+                throw new XmlEncodeException("Failed to create entry: " + entryElement.getDebugText());
             }
             if(isBag(entryElement)){
                 encodeBag(entryElement, entry);
