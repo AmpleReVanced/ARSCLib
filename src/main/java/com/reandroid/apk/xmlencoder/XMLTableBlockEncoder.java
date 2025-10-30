@@ -305,7 +305,24 @@ public class XMLTableBlockEncoder {
     private void encodeValuesDir(File valuesDir) throws IOException, XmlPullParserException {
         List<File> xmlFiles = ApkUtil.listFiles(valuesDir, ".xml");
         EncodeUtil.sortValuesXml(xmlFiles);
-        for(File file:xmlFiles){
+        
+        for(File file : xmlFiles){
+            String name = file.getName();
+            if("strings.xml".equals(name) || "attrs.xml".equals(name)){
+                if(!isAlreadyParsed(file) && !addNonTypeValueFile(file)){
+                    addParsedFiles(file);
+                    logVerbose("Encoding (pass 1): " + FileUtil.shortPath(file, 4));
+                    XmlCoder xmlCoder = XmlCoder.getInstance();
+                    xmlCoder.VALUES_XML.encode(file, getTableBlock().getCurrentPackage());
+                }
+            }
+        }
+        
+        for(File file : xmlFiles){
+            String name = file.getName();
+            if("strings.xml".equals(name) || "attrs.xml".equals(name)){
+                continue;
+            }
             if(isAlreadyParsed(file)){
                 continue;
             }
@@ -313,7 +330,7 @@ public class XMLTableBlockEncoder {
                 continue;
             }
             addParsedFiles(file);
-            logVerbose("Encoding: " + FileUtil.shortPath(file, 4));
+            logVerbose("Encoding (pass 2): " + FileUtil.shortPath(file, 4));
             XmlCoder xmlCoder = XmlCoder.getInstance();
             xmlCoder.VALUES_XML.encode(file, getTableBlock().getCurrentPackage());
         }

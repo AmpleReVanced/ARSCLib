@@ -24,6 +24,20 @@ public class EncodeUtil {
         Comparator<File> cmp= (f1, f2) -> {
             String n1=getValuesXmlCompare(f1);
             String n2=getValuesXmlCompare(f2);
+            if ("strings.xml".equals(n1)) return -1;
+            if ("strings.xml".equals(n2)) return 1;
+
+            if ("attrs.xml".equals(n1)) return -1;
+            if ("attrs.xml".equals(n2)) return 1;
+            
+            if ("public.xml".equals(n1)) return 1;
+            if ("public.xml".equals(n2)) return -1;
+
+            boolean isArray1 = n1.startsWith("arrays") || n1.contains("-array");
+            boolean isArray2 = n2.startsWith("arrays") || n2.contains("-array");
+
+            if (isArray1 && !isArray2) return 1;
+            if (!isArray1 && isArray2) return -1;
             return n1.compareTo(n2);
         };
         fileList.sort(cmp);
