@@ -432,6 +432,102 @@ public class PackageBlock extends Chunk<PackageHeader>
         mPrefix = null;
         mHasValidPrefix = false;
     }
+    /**
+     * Changes the package name and updates all resource references in TableStringPool
+     * from oldPackageName to newPackageName. This is similar to APKTool's behavior.
+     * 
+     * Note: This only updates references in the TableStringPool (resources.arsc).
+     * If you have XML files that need to be re-encoded, use updatePackageNameInXmlStrings()
+     * before encoding them, or better yet, don't decode XML files and work with binary XML.
+     * 
+     * @param newName The new package name
+     */
+    public void setNameAndUpdateReferences(String newName) {
+        String oldName = getName();
+        if (oldName == null || oldName.equals(newName)) {
+            setName(newName);
+            return;
+        }
+        
+        // First, update the package name
+        setName(newName);
+        
+        // Then, update all string references in TableStringPool
+        TableBlock tableBlock = getTableBlock();
+        if (tableBlock == null) {
+            return;
+        }
+        
+        TableStringPool tableStringPool = tableBlock.getTableStringPool();
+        if (tableStringPool == null) {
+            return;
+        }
+        
+        updatePackageNameInStrings(tableStringPool, oldName, newName);
+    }
+    
+    /**
+     * Updates package name references in a string pool.
+     * This is a helper method that can be used for both TableStringPool and XmlStringPool.
+     * 
+     * @param stringPool The string pool to update (can be TableStringPool or any string pool)
+     * @param oldName The old package name
+     * @param newName The new package name
+     */
+    private static void updatePackageNameInStrings(com.reandroid.arsc.pool.StringPool<?> stringPool, 
+                                                     String oldName, String newName) {
+        if (stringPool == null || oldName == null || newName == null || oldName.equals(newName)) {
+            return;
+        }
+        
+        // Build search patterns for the old package name
+        String oldRefPrefix = "@" + oldName + ":";
+        String oldAttrPrefix = "?" + oldName + ":";
+        String newRefPrefix = "@" + newName + ":";
+        String newAttrPrefix = "?" + newName + ":";
+        
+        // Iterate through all strings in the pool and update references
+        Iterator<? extends com.reandroid.arsc.item.StringItem> iterator = stringPool.iterator();
+        while (iterator.hasNext()) {
+            com.reandroid.arsc.item.StringItem stringItem = iterator.next();
+            if (stringItem == null) {
+                continue;
+            }
+            
+            String value = stringItem.get();
+            if (value == null) {
+                continue;
+            }
+            
+            String newValue = null;
+            if (value.startsWith(oldRefPrefix)) {
+                // Replace @oldPackage:type/name with @newPackage:type/name
+                newValue = newRefPrefix + value.substring(oldRefPrefix.length());
+            } else if (value.startsWith(oldAttrPrefix)) {
+                // Replace ?oldPackage:type/name with ?newPackage:type/name
+                newValue = newAttrPrefix + value.substring(oldAttrPrefix.length());
+            }
+            
+            if (newValue != null) {
+                stringItem.set(newValue);
+            }
+        }
+    }
+    
+    /**
+     * Updates package name references in XML string pools.
+     * This should be called AFTER decoding XML files and BEFORE encoding them back.
+     * 
+     * Use this when you have decoded XML files (like when using ApkModuleXmlEncoder)
+     * and need to update the package references in those XML files.
+     * 
+     * @param oldName The old package name
+     * @param newName The new package name
+     */
+    public static void updatePackageNameInXmlStrings(com.reandroid.arsc.pool.StringPool<?> xmlStringPool,
+                                                      String oldName, String newName) {
+        updatePackageNameInStrings(xmlStringPool, oldName, newName);
+    }
     @Override
     public String getPrefix(){
         if(mPrefix != null){
