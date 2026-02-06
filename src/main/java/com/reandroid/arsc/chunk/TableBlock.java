@@ -54,6 +54,7 @@ public class TableBlock extends Chunk<TableHeader>
     private ReferenceResolver referenceResolver;
     private PackageBlock mCurrentPackage;
     private PackageBlock mEmptyTablePackage;
+    private java.util.Map<String, String> mPackageNameAliases;
 
     public TableBlock() {
         super(new TableHeader(), 2);
@@ -63,6 +64,59 @@ public class TableBlock extends Chunk<TableHeader>
         this.mFrameWorks = new ArrayCollection<>();
         addChild(mTableStringPool);
         addChild(mPackageArray);
+    }
+    /**
+     * Registers a package name alias for automatic resolution during XML encoding.
+     * When XML files reference the old package name (e.g., "@com.kakao.talk:color/white"),
+     * this mapping will automatically resolve it to the new package name.
+     * 
+     * This is useful when you've changed the package name in the APK but the decoded
+     * XML files still reference the old package name.
+     * 
+     * @param oldPackageName The old/alias package name that appears in XML files
+     * @param newPackageName The actual/current package name in the PackageBlock
+     */
+    public void addPackageNameAlias(String oldPackageName, String newPackageName) {
+        if (oldPackageName == null || newPackageName == null || oldPackageName.equals(newPackageName)) {
+            return;
+        }
+        if (mPackageNameAliases == null) {
+            mPackageNameAliases = new java.util.HashMap<>();
+        }
+        mPackageNameAliases.put(oldPackageName, newPackageName);
+    }
+    
+    /**
+     * Removes a package name alias.
+     * 
+     * @param oldPackageName The alias to remove
+     */
+    public void removePackageNameAlias(String oldPackageName) {
+        if (mPackageNameAliases != null) {
+            mPackageNameAliases.remove(oldPackageName);
+        }
+    }
+    
+    /**
+     * Clears all package name aliases.
+     */
+    public void clearPackageNameAliases() {
+        if (mPackageNameAliases != null) {
+            mPackageNameAliases.clear();
+        }
+    }
+    
+    /**
+     * Resolves a package name through aliases if available.
+     * 
+     * @param packageName The package name to resolve (might be an alias)
+     * @return The actual package name, or the input if no alias exists
+     */
+    private String resolvePackageNameAlias(String packageName) {
+        if (packageName == null || mPackageNameAliases == null || mPackageNameAliases.isEmpty()) {
+            return packageName;
+        }
+        return mPackageNameAliases.getOrDefault(packageName, packageName);
     }
     // Experimental
     public void changePackageId(int packageIdOld, int packageIdNew){
@@ -158,6 +212,9 @@ public class TableBlock extends Chunk<TableHeader>
         return null;
     }
     public ResourceEntry getResource(String packageName, String type, String name){
+        // Resolve package name alias first
+        packageName = resolvePackageNameAlias(packageName);
+
         Iterator<PackageBlock> iterator = getAllPackages(packageName);
         while (iterator.hasNext()){
             PackageBlock packageBlock = iterator.next();
@@ -180,6 +237,9 @@ public class TableBlock extends Chunk<TableHeader>
         return null;
     }
     public ResourceEntry getResource(PackageBlock context, String packageName, String type, String name){
+        // Resolve package name alias first
+        packageName = resolvePackageNameAlias(packageName);
+
         Iterator<PackageBlock> iterator = getAllPackages(context, packageName);
         while (iterator.hasNext()){
             PackageBlock packageBlock = iterator.next();
@@ -219,6 +279,9 @@ public class TableBlock extends Chunk<TableHeader>
         return getLocalResource((String) null, type, name);
     }
     public ResourceEntry getLocalResource(String packageName, String type, String name){
+        // Resolve package name alias first
+        packageName = resolvePackageNameAlias(packageName);
+
         Iterator<PackageBlock> iterator = getPackages(packageName);
         while (iterator.hasNext()){
             PackageBlock packageBlock = iterator.next();
@@ -283,6 +346,9 @@ public class TableBlock extends Chunk<TableHeader>
         return null;
     }
     public int resolveResourceId(String packageName, String type, String name){
+        // Resolve package name alias first
+        packageName = resolvePackageNameAlias(packageName);
+
         Iterator<Entry> iterator = getEntries(packageName, type, name);
         if(iterator.hasNext()){
             return iterator.next().getResourceId();
@@ -290,6 +356,9 @@ public class TableBlock extends Chunk<TableHeader>
         return 0;
     }
     public Entry getEntry(String packageName, String type, String name){
+        // Resolve package name alias first
+        packageName = resolvePackageNameAlias(packageName);
+
         Iterator<PackageBlock> iterator = getAllPackages(packageName);
         Entry result = null;
         while (iterator.hasNext()){
