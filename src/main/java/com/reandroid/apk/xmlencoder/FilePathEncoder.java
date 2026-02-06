@@ -88,14 +88,15 @@ public class FilePathEncoder {
         PackageBlock packageBlock = getCurrentPackage();
         ResourceEntry resourceEntry = packageBlock.getTableBlock()
                 .getLocalResource(packageBlock, type, name);
+        Entry entry;
         if(resourceEntry == null){
-            throw new XmlEncodeException("Local resource not defined: @" + type + "/" + name
-                    + ", for path: " + path);
+            entry = packageBlock.getOrCreate(qualifiers, type, name);
+        } else {
+            entry = resourceEntry.getOrCreate(qualifiers);
         }
-        Entry entry = resourceEntry.getOrCreate(qualifiers);
         entry.setValueAsString(path);
         InputSource inputSource = createInputSource(
-                resourceEntry.getPackageBlock(), path, resFile);
+                packageBlock, path, resFile);
         addInputSource(inputSource);
     }
     private InputSource createInputSource(PackageBlock packageBlock, String path, File resFile){

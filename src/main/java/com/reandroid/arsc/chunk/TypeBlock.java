@@ -195,8 +195,10 @@ public class TypeBlock extends Chunk<TypeHeader>
             return null;
         }
         int id = packageBlock.resolveResourceId(getId(), name);
-        if (id == 0) {
-            return null;
+        if (id != 0) {
+            id = id & 0xffff;
+        } else {
+            id = getParentSpecTypePair().getHighestEntryId() + 1;
         }
         SpecStringPool stringPool = packageBlock.getSpecStringPool();
         SpecString specString = stringPool.getOrCreate(name);

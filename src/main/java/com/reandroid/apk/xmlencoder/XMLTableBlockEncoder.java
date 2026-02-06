@@ -25,6 +25,7 @@ import com.reandroid.arsc.chunk.xml.AndroidManifestBlock;
 import com.reandroid.arsc.coder.ReferenceString;
 import com.reandroid.arsc.coder.xml.XmlCoder;
 import com.reandroid.arsc.list.OverlayableList;
+import com.reandroid.arsc.model.ResourceEntry;
 import com.reandroid.arsc.pool.TableStringPool;
 import com.reandroid.utils.HexUtil;
 import com.reandroid.utils.io.FileUtil;
@@ -107,6 +108,8 @@ public class XMLTableBlockEncoder {
 
         initializeFrameworkFromManifest(pubXmlFileList);
 
+        preRegisterResourceNames(pubXmlFileList);
+
         encodeAttrs(pubXmlFileList);
 
         encodeValues(pubXmlFileList);
@@ -115,6 +118,86 @@ public class XMLTableBlockEncoder {
 
         tableBlock.refresh();
 
+    }
+    private void preRegisterResourceNames(List<File> pubXmlFileList) throws IOException, XmlPullParserException {
+        logMessage("Pre-registering resource names ...");
+        TableBlock tableBlock = getTableBlock();
+        for(File pubXmlFile : pubXmlFileList){
+            PackageBlock packageBlock = tableBlock.getPackageBlockByTag(pubXmlFile);
+            File resDir = toResDirectory(pubXmlFile);
+            preRegisterValuesResources(packageBlock, resDir);
+            preRegisterFileResources(packageBlock, resDir);
+        }
+    }
+    private void preRegisterValuesResources(PackageBlock packageBlock, File resDir)
+            throws IOException, XmlPullParserException {
+        List<File> valuesDirList = ApkUtil.listValuesDirectory(resDir, false);
+        for(File valuesDir : valuesDirList){
+            List<File> xmlFiles = ApkUtil.listFiles(valuesDir, ".xml");
+            for(File file : xmlFiles){
+                String name = file.getName();
+                if(PackageBlock.PUBLIC_XML.equals(name)){
+                    continue;
+                }
+                if(Overlayable.FILE_NAME_XML.equals(name)){
+                    continue;
+                }
+                preRegisterValuesXml(packageBlock, file);
+            }
+        }
+    }
+    private void preRegisterValuesXml(PackageBlock packageBlock, File valuesXmlFile)
+            throws IOException, XmlPullParserException {
+        String typeName = com.reandroid.arsc.coder.xml.XmlEncodeUtil.getTypeFromValuesXml(valuesXmlFile);
+        XmlPullParser parser = XMLFactory.newPullParser(valuesXmlFile);
+        int event = parser.getEventType();
+        if(event == XmlPullParser.START_DOCUMENT){
+            parser.next();
+        }
+        int depth = 0;
+        event = parser.getEventType();
+        while(event != XmlPullParser.END_DOCUMENT){
+            if(event == XmlPullParser.START_TAG){
+                depth++;
+                if(depth == 2){
+                    String entryName = parser.getAttributeValue(null, "name");
+                    if(entryName != null){
+                        String entryType = typeName;
+                        String tag = parser.getName();
+                        if("item".equals(tag)){
+                            String typeAttr = parser.getAttributeValue(null, "type");
+                            if(typeAttr != null){
+                                entryType = typeAttr;
+                            }
+                        }
+                        if(packageBlock.getResource(entryType, entryName) == null){
+                            packageBlock.getOrCreate("", entryType, entryName);
+                        }
+                    }
+                }
+            } else if(event == XmlPullParser.END_TAG){
+                depth--;
+            }
+            parser.next();
+            event = parser.getEventType();
+        }
+        IOUtil.close(parser);
+    }
+    private void preRegisterFileResources(PackageBlock packageBlock, File resDir){
+        List<File> dirList = ApkUtil.listDirectories(resDir);
+        for(File dir : dirList){
+            if(ApkUtil.isValuesDirectoryName(dir.getName(), true)){
+                continue;
+            }
+            List<File> fileList = ApkUtil.listFiles(dir, null);
+            for(File file : fileList){
+                String type = EncodeUtil.getTypeNameFromResFile(file);
+                String name = EncodeUtil.getEntryNameFromResFile(file);
+                if(packageBlock.getResource(type, name) == null){
+                    packageBlock.getOrCreate("", type, name);
+                }
+            }
+        }
     }
     private void loadPublicXmlFiles(List<File> pubXmlFileList) throws IOException {
         for(File pubXmlFile:pubXmlFileList){
