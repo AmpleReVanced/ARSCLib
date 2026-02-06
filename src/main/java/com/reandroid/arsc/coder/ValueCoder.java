@@ -18,7 +18,9 @@ package com.reandroid.arsc.coder;
 import com.reandroid.arsc.chunk.PackageBlock;
 import com.reandroid.arsc.chunk.TableBlock;
 import com.reandroid.arsc.model.ResourceEntry;
+import com.reandroid.arsc.value.Entry;
 import com.reandroid.arsc.value.Value;
+import com.reandroid.arsc.value.ValueHeader;
 import com.reandroid.arsc.value.attribute.AttributeBag;
 import com.reandroid.utils.HexUtil;
 import com.reandroid.arsc.value.AttributeDataFormat;
@@ -95,12 +97,34 @@ public class ValueCoder {
         if(referenceString != null){
             encodeResult = referenceString.encode(packageBlock, EncodeResult.RESOURCE_NOT_FOUND);
             if(encodeResult.isError()){
-                encodeResult = new EncodeResult(
-                        buildResourceNotFoundMessage(packageBlock, value));
+                if("@+".equals(referenceString.prefix)){
+                    encodeResult = autoCreateIdEntry(packageBlock, referenceString);
+                }
+                if(encodeResult.isError()){
+                    encodeResult = new EncodeResult(
+                            buildResourceNotFoundMessage(packageBlock, value));
+                }
             }
             return encodeResult;
         }
         return null;
+    }
+    private static EncodeResult autoCreateIdEntry(PackageBlock packageBlock, ReferenceString referenceString){
+        String type = referenceString.type;
+        String entryName = referenceString.name;
+        Entry entry = packageBlock.getOrCreate("", type, entryName);
+        if(entry == null){
+            return EncodeResult.RESOURCE_NOT_FOUND;
+        }
+        if(entry.isNull()){
+            entry.setValueAsBoolean(false);
+            ValueHeader header = entry.getHeader();
+            if(header != null){
+                header.setPublic(true);
+                header.setWeak(true);
+            }
+        }
+        return new EncodeResult(ValueType.REFERENCE, entry.getResourceId());
     }
     public static EncodeResult encodeReference(TableBlock tableBlock, String value){
         if(value == null || value.length() < 3){
