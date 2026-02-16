@@ -18,6 +18,7 @@ package com.reandroid.arsc.chunk;
 import com.reandroid.arsc.ARSCLib;
 import com.reandroid.arsc.ApkFile;
 import com.reandroid.arsc.array.PackageArray;
+import com.reandroid.arsc.coder.ReferenceString;
 import com.reandroid.arsc.header.HeaderBlock;
 import com.reandroid.arsc.header.InfoHeader;
 import com.reandroid.arsc.header.TableHeader;
@@ -39,9 +40,7 @@ import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
 
 import java.io.*;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.function.Predicate;
 
 public class TableBlock extends Chunk<TableHeader>
@@ -81,9 +80,19 @@ public class TableBlock extends Chunk<TableHeader>
             return;
         }
         if (mPackageNameAliases == null) {
-            mPackageNameAliases = new java.util.HashMap<>();
+            mPackageNameAliases = new HashMap<>();
         }
-        mPackageNameAliases.put(oldPackageName, newPackageName);
+        String resolvedNew = resolvePackageNameAlias(newPackageName);
+        if (oldPackageName.equals(resolvedNew)) {
+            return;
+        }
+        // Repoint aliases that currently resolve through oldPackageName.
+        for (Map.Entry<String, String> entry : mPackageNameAliases.entrySet()) {
+            if (oldPackageName.equals(entry.getValue())) {
+                entry.setValue(resolvedNew);
+            }
+        }
+        mPackageNameAliases.put(oldPackageName, resolvedNew);
     }
     
     /**
@@ -116,7 +125,131 @@ public class TableBlock extends Chunk<TableHeader>
         if (packageName == null || mPackageNameAliases == null || mPackageNameAliases.isEmpty()) {
             return packageName;
         }
-        return mPackageNameAliases.getOrDefault(packageName, packageName);
+        String resolved = packageName;
+        Set<String> visited = new HashSet<>();
+        while (visited.add(resolved)) {
+            String next = mPackageNameAliases.get(resolved);
+            if (next == null || next.equals(resolved)) {
+                break;
+            }
+            resolved = next;
+        }
+        return resolved;
+    }
+    /**
+     * Renames a package and updates references in table string pool in one operation.
+     *
+     * @return true if one or more packages were renamed.
+     */
+    public boolean renamePackage(String oldPackageName, String newPackageName, boolean updateReferences) {
+        if (oldPackageName == null || newPackageName == null || oldPackageName.equals(newPackageName)) {
+            return false;
+        }
+        Map<String, String> renameMap = new LinkedHashMap<>(1);
+        renameMap.put(oldPackageName, newPackageName);
+        return renamePackages(renameMap, updateReferences) > 0;
+    }
+    /**
+     * Renames multiple packages with a single table-string scan.
+     *
+     * @param renameMap old name -> new name
+     * @param updateReferences whether to update package qualifiers in string references
+     * @return number of package blocks renamed
+     */
+    public int renamePackages(Map<String, String> renameMap, boolean updateReferences) {
+        Map<String, String> normalizedMap = normalizeRenameMap(renameMap);
+        if (normalizedMap.isEmpty()) {
+            return 0;
+        }
+        for (Map.Entry<String, String> entry : normalizedMap.entrySet()) {
+            addPackageNameAlias(entry.getKey(), entry.getValue());
+        }
+        int renamedCount = 0;
+        for (PackageBlock packageBlock : this) {
+            String oldName = packageBlock.getName();
+            if (oldName == null) {
+                continue;
+            }
+            String newName = resolvePackageNameMapping(normalizedMap, oldName);
+            if (newName == null || oldName.equals(newName)) {
+                continue;
+            }
+            packageBlock.setName(newName);
+            renamedCount++;
+        }
+        if (updateReferences) {
+            updatePackageNameInStrings(getTableStringPool(), normalizedMap);
+        }
+        return renamedCount;
+    }
+    private static Map<String, String> normalizeRenameMap(Map<String, String> renameMap) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (renameMap == null || renameMap.isEmpty()) {
+            return result;
+        }
+        for (Map.Entry<String, String> entry : renameMap.entrySet()) {
+            String oldName = entry.getKey();
+            String newName = entry.getValue();
+            if (oldName == null || newName == null || oldName.equals(newName)) {
+                continue;
+            }
+            result.put(oldName, newName);
+        }
+        return result;
+    }
+    private static String resolvePackageNameMapping(Map<String, String> renameMap, String packageName) {
+        if (packageName == null || renameMap == null || renameMap.isEmpty()) {
+            return packageName;
+        }
+        String resolved = packageName;
+        Set<String> visited = new HashSet<>();
+        while (visited.add(resolved)) {
+            String next = renameMap.get(resolved);
+            if (next == null || next.equals(resolved)) {
+                break;
+            }
+            resolved = next;
+        }
+        return resolved;
+    }
+    private static void updatePackageNameInStrings(com.reandroid.arsc.pool.StringPool<?> stringPool,
+                                                   Map<String, String> renameMap) {
+        if (stringPool == null || renameMap == null || renameMap.isEmpty()) {
+            return;
+        }
+        Iterator<? extends com.reandroid.arsc.item.StringItem> iterator = stringPool.iterator();
+        while (iterator.hasNext()) {
+            com.reandroid.arsc.item.StringItem stringItem = iterator.next();
+            if (stringItem == null) {
+                continue;
+            }
+            String value = stringItem.get();
+            if (value == null || value.length() < 4) {
+                continue;
+            }
+            char first = value.charAt(0);
+            if ((first != '@' && first != '?') || value.indexOf(':') < 0 || value.indexOf('/') < 0) {
+                continue;
+            }
+            ReferenceString referenceString = ReferenceString.parseReference(value);
+            if (referenceString == null || referenceString.packageName == null) {
+                continue;
+            }
+            String newPackageName = resolvePackageNameMapping(renameMap, referenceString.packageName);
+            if (newPackageName == null || referenceString.packageName.equals(newPackageName)) {
+                continue;
+            }
+            ReferenceString renamed = new ReferenceString(
+                    referenceString.prefix,
+                    newPackageName,
+                    referenceString.type,
+                    referenceString.name
+            );
+            String newValue = renamed.toString();
+            if (!value.equals(newValue)) {
+                stringItem.set(newValue);
+            }
+        }
     }
     // Experimental
     public void changePackageId(int packageIdOld, int packageIdNew){

@@ -72,6 +72,64 @@ public class ApkModuleTest {
         Assert.assertNotEquals(0, packageBlock.getTypeIdOffset());
 
     }
+    @Test
+    public void c_testSetPackageNameUpdatesReferences() {
+        ApkModule apkModule = new ApkModule();
+
+        AndroidManifestBlock manifestBlock = new AndroidManifestBlock();
+        manifestBlock.setPackageName("com.example.old");
+        apkModule.setManifest(manifestBlock);
+
+        TableBlock tableBlock = new TableBlock();
+        PackageBlock base = tableBlock.newPackage(0x7f, "com.example.old");
+        PackageBlock feature = tableBlock.newPackage(0x80, "com.example.old.feature");
+
+        base.getOrCreate("", "string", "base_name").setValueAsString("base");
+        feature.getOrCreate("", "string", "feature_name").setValueAsString("feature");
+
+        TableStringPool stringPool = tableBlock.getTableStringPool();
+        TableString baseRef = stringPool.getOrCreate("@com.example.old:string/base_name");
+        TableString featureRef = stringPool.getOrCreate("@com.example.old.feature:string/feature_name");
+
+        apkModule.setTableBlock(tableBlock);
+        apkModule.setPackageName("org.example.new");
+
+        Assert.assertEquals("org.example.new", apkModule.getAndroidManifest().getPackageName());
+        Assert.assertEquals("org.example.new", base.getName());
+        Assert.assertEquals("org.example.new.feature", feature.getName());
+        Assert.assertEquals("@org.example.new:string/base_name", baseRef.get());
+        Assert.assertEquals("@org.example.new.feature:string/feature_name", featureRef.get());
+
+        Assert.assertNotNull(tableBlock.getResource("com.example.old", "string", "base_name"));
+        Assert.assertNotNull(tableBlock.getResource("com.example.old.feature", "string", "feature_name"));
+    }
+    @Test
+    public void d_testSetPackageNameWhenManifestAlreadyNew() {
+        ApkModule apkModule = new ApkModule();
+
+        AndroidManifestBlock manifestBlock = new AndroidManifestBlock();
+        manifestBlock.setPackageName("com.example.new");
+        apkModule.setManifest(manifestBlock);
+
+        TableBlock tableBlock = new TableBlock();
+        PackageBlock base = tableBlock.newPackage(0x7f, "com.example.old");
+        PackageBlock feature = tableBlock.newPackage(0x80, "com.example.old.feature");
+
+        base.getOrCreate("", "string", "base_name").setValueAsString("base");
+        feature.getOrCreate("", "string", "feature_name").setValueAsString("feature");
+
+        TableStringPool stringPool = tableBlock.getTableStringPool();
+        TableString baseRef = stringPool.getOrCreate("@com.example.old:string/base_name");
+        TableString featureRef = stringPool.getOrCreate("@com.example.old.feature:string/feature_name");
+
+        apkModule.setTableBlock(tableBlock);
+        apkModule.setPackageName("com.example.new");
+
+        Assert.assertEquals("com.example.new", base.getName());
+        Assert.assertEquals("com.example.new.feature", feature.getName());
+        Assert.assertEquals("@com.example.new:string/base_name", baseRef.get());
+        Assert.assertEquals("@com.example.new.feature:string/feature_name", featureRef.get());
+    }
     public ApkModule createApkModule() throws IOException {
 
         ApkModule apkModule = new ApkModule();

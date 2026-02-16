@@ -3,7 +3,7 @@ apply plugin: 'java'
 apply plugin: 'maven-publish'
 
 group 'app.revanced'
-version '1.3.9.1'
+version '1.3.9.2'
 
 java {
     sourceCompatibility JavaVersion.VERSION_1_8
@@ -54,7 +54,7 @@ publishing {
             
             groupId = 'app.revanced'
             artifactId = 'arsclib'
-            version = '1.3.9.1'
+            version = '1.3.9.2'
         }
     }
     

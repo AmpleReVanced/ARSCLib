@@ -21,6 +21,7 @@ import com.reandroid.arsc.array.SpecTypePairArray;
 import com.reandroid.arsc.base.Block;
 import com.reandroid.arsc.coder.CommonType;
 import com.reandroid.arsc.coder.EncodeResult;
+import com.reandroid.arsc.coder.ReferenceString;
 import com.reandroid.arsc.coder.ValueCoder;
 import com.reandroid.arsc.coder.xml.XmlEncodeException;
 import com.reandroid.arsc.container.BlockList;
@@ -448,22 +449,13 @@ public class PackageBlock extends Chunk<PackageHeader>
             setName(newName);
             return;
         }
-        
-        // First, update the package name
-        setName(newName);
-        
-        // Then, update all string references in TableStringPool
+
         TableBlock tableBlock = getTableBlock();
         if (tableBlock == null) {
+            setName(newName);
             return;
         }
-        
-        TableStringPool tableStringPool = tableBlock.getTableStringPool();
-        if (tableStringPool == null) {
-            return;
-        }
-        
-        updatePackageNameInStrings(tableStringPool, oldName, newName);
+        tableBlock.renamePackage(oldName, newName, true);
     }
     
     /**
@@ -479,14 +471,8 @@ public class PackageBlock extends Chunk<PackageHeader>
         if (stringPool == null || oldName == null || newName == null || oldName.equals(newName)) {
             return;
         }
-        
-        // Build search patterns for the old package name
-        String oldRefPrefix = "@" + oldName + ":";
-        String oldAttrPrefix = "?" + oldName + ":";
-        String newRefPrefix = "@" + newName + ":";
-        String newAttrPrefix = "?" + newName + ":";
-        
-        // Iterate through all strings in the pool and update references
+
+        // Parse reference syntax instead of naive prefix replacement.
         Iterator<? extends com.reandroid.arsc.item.StringItem> iterator = stringPool.iterator();
         while (iterator.hasNext()) {
             com.reandroid.arsc.item.StringItem stringItem = iterator.next();
@@ -498,17 +484,22 @@ public class PackageBlock extends Chunk<PackageHeader>
             if (value == null) {
                 continue;
             }
-            
-            String newValue = null;
-            if (value.startsWith(oldRefPrefix)) {
-                // Replace @oldPackage:type/name with @newPackage:type/name
-                newValue = newRefPrefix + value.substring(oldRefPrefix.length());
-            } else if (value.startsWith(oldAttrPrefix)) {
-                // Replace ?oldPackage:type/name with ?newPackage:type/name
-                newValue = newAttrPrefix + value.substring(oldAttrPrefix.length());
+
+            ReferenceString referenceString = ReferenceString.parseReference(value);
+            if (referenceString == null) {
+                continue;
             }
-            
-            if (newValue != null) {
+            if (!oldName.equals(referenceString.packageName)) {
+                continue;
+            }
+            ReferenceString renamed = new ReferenceString(
+                    referenceString.prefix,
+                    newName,
+                    referenceString.type,
+                    referenceString.name
+            );
+            String newValue = renamed.toString();
+            if (!value.equals(newValue)) {
                 stringItem.set(newValue);
             }
         }

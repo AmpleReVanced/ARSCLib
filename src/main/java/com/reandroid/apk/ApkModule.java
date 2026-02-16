@@ -56,9 +56,11 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -753,26 +755,67 @@ public class ApkModule implements ApkFile, Closeable {
         return pkg.getName();
     }
     public void setPackageName(String name) {
-        String old=getPackageName();
+        String old = getPackageName();
         if (hasAndroidManifest()) {
             getAndroidManifest().setPackageName(name);
         }
         if (!hasTableBlock()) {
             return;
         }
-        TableBlock tableBlock=getTableBlock();
+        TableBlock tableBlock = getTableBlock();
         PackageArray pkgArray = tableBlock.getPackageArray();
-        for (PackageBlock pkg:pkgArray.listItems()) {
-            if (pkgArray.size()==1) {
-                pkg.setName(name);
-                continue;
-            }
-            String pkgName=pkg.getName();
-            if (pkgName.startsWith(old)) {
-                pkgName=pkgName.replace(old, name);
-                pkg.setName(pkgName);
+        List<PackageBlock> packageList = new ArrayList<>();
+        for (PackageBlock pkg : pkgArray.listItems()) {
+            if (pkg != null && pkg.getName() != null) {
+                packageList.add(pkg);
             }
         }
+        if (packageList.isEmpty()) {
+            return;
+        }
+
+        Map<String, String> renameMap = new LinkedHashMap<>();
+        int packageCount = packageList.size();
+        for (PackageBlock pkg : packageList) {
+            String oldPackageName = pkg.getName();
+            String newPackageName = null;
+            if (packageCount == 1) {
+                newPackageName = name;
+            } else if (old != null && oldPackageName.startsWith(old)) {
+                newPackageName = name + oldPackageName.substring(old.length());
+            }
+            if (newPackageName != null && !oldPackageName.equals(newPackageName)) {
+                renameMap.put(oldPackageName, newPackageName);
+            }
+        }
+
+        // Manifest package can already be updated before this call.
+        // In that case derive the old base package from current table package names.
+        if (renameMap.isEmpty() && packageCount > 1 && name != null) {
+            String tableBasePackage = null;
+            for (PackageBlock pkg : packageList) {
+                String pkgName = pkg.getName();
+                if (pkgName.length() == 0) {
+                    continue;
+                }
+                if (tableBasePackage == null || pkgName.length() < tableBasePackage.length()) {
+                    tableBasePackage = pkgName;
+                }
+            }
+            if (tableBasePackage != null && !tableBasePackage.equals(name)) {
+                for (PackageBlock pkg : packageList) {
+                    String oldPackageName = pkg.getName();
+                    if (oldPackageName.startsWith(tableBasePackage)) {
+                        String newPackageName = name + oldPackageName.substring(tableBasePackage.length());
+                        if (!oldPackageName.equals(newPackageName)) {
+                            renameMap.put(oldPackageName, newPackageName);
+                        }
+                    }
+                }
+            }
+        }
+
+        tableBlock.renamePackages(renameMap, true);
     }
     // Use hasAndroidManifest
     @Deprecated

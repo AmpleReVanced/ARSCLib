@@ -5,6 +5,9 @@ import com.reandroid.arsc.pool.TableStringPool;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class PackageBlockTest {
 
     @Test
@@ -37,6 +40,24 @@ public class PackageBlockTest {
         // Verify other strings were not modified
         Assert.assertEquals("normal string", normalString.get());
         Assert.assertEquals("@android:color/white", otherPackageRef.get());
+    }
+
+    @Test
+    public void testSetNameAndUpdateReferences_CreatesAliasAndUpdatesCreateRef() {
+        TableBlock tableBlock = new TableBlock();
+        PackageBlock packageBlock = tableBlock.newPackage(0x7f, "com.example.app");
+        packageBlock.getOrCreate("", "id", "action");
+
+        TableStringPool stringPool = tableBlock.getTableStringPool();
+        TableString createRef = stringPool.getOrCreate("@+com.example.app:id/action");
+
+        packageBlock.setNameAndUpdateReferences("com.example.renamed");
+
+        Assert.assertEquals("@+com.example.renamed:id/action", createRef.get());
+
+        com.reandroid.arsc.model.ResourceEntry resolved =
+                tableBlock.getResource("com.example.app", "id", "action");
+        Assert.assertNotNull("Old package alias should resolve to renamed package", resolved);
     }
 
     @Test
@@ -91,6 +112,49 @@ public class PackageBlockTest {
                 tableBlock.getResource("com.example.new", "string", "test_string");
         Assert.assertNotNull("Resource should be found with actual name", resource2);
         Assert.assertEquals(resource.getResourceId(), resource2.getResourceId());
+    }
+
+    @Test
+    public void testPackageNameAliasResolution_ChainedAliases() {
+        TableBlock tableBlock = new TableBlock();
+        PackageBlock packageBlock = tableBlock.newPackage(0x7f, "com.example.final");
+        packageBlock.getOrCreate("", "string", "title").setValueAsString("v");
+
+        tableBlock.addPackageNameAlias("com.example.old", "com.example.mid");
+        tableBlock.addPackageNameAlias("com.example.mid", "com.example.final");
+
+        com.reandroid.arsc.model.ResourceEntry resource =
+                tableBlock.getResource("com.example.old", "string", "title");
+        Assert.assertNotNull("Chained aliases should resolve to final package", resource);
+    }
+
+    @Test
+    public void testRenamePackages_BulkUpdateReferences() {
+        TableBlock tableBlock = new TableBlock();
+        PackageBlock base = tableBlock.newPackage(0x7f, "com.example.old");
+        PackageBlock feature = tableBlock.newPackage(0x80, "com.example.old.feature");
+
+        base.getOrCreate("", "string", "base").setValueAsString("base");
+        feature.getOrCreate("", "string", "feature").setValueAsString("feature");
+
+        TableStringPool stringPool = tableBlock.getTableStringPool();
+        TableString baseRef = stringPool.getOrCreate("@com.example.old:string/base");
+        TableString featureRef = stringPool.getOrCreate("@com.example.old.feature:string/feature");
+
+        Map<String, String> renameMap = new LinkedHashMap<>();
+        renameMap.put("com.example.old", "org.example.new");
+        renameMap.put("com.example.old.feature", "org.example.new.feature");
+
+        int renamed = tableBlock.renamePackages(renameMap, true);
+        Assert.assertEquals(2, renamed);
+
+        Assert.assertEquals("org.example.new", base.getName());
+        Assert.assertEquals("org.example.new.feature", feature.getName());
+        Assert.assertEquals("@org.example.new:string/base", baseRef.get());
+        Assert.assertEquals("@org.example.new.feature:string/feature", featureRef.get());
+
+        Assert.assertNotNull(tableBlock.getResource("com.example.old", "string", "base"));
+        Assert.assertNotNull(tableBlock.getResource("com.example.old.feature", "string", "feature"));
     }
 
     @Test
